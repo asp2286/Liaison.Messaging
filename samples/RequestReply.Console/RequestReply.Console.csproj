@@ -10,5 +10,6 @@
     <ProjectReference Include="../../src/Liaison.Messaging.Abstractions/Liaison.Messaging.Abstractions.csproj" />
     <ProjectReference Include="../../src/Liaison.Messaging.Core/Liaison.Messaging.Core.csproj" />
     <ProjectReference Include="../../src/Liaison.Messaging.DependencyInjection/Liaison.Messaging.DependencyInjection.csproj" />
+    <ProjectReference Include="../../src/Liaison.Messaging.InMemory/Liaison.Messaging.InMemory.csproj" />
   </ItemGroup>
 </Project>

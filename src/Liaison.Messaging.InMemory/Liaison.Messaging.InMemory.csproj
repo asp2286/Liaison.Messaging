@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Liaison.Messaging.InMemory</PackageId>
+    <Description>In-memory transport for Liaison.Messaging abstractions.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Liaison.Messaging.Abstractions/Liaison.Messaging.Abstractions.csproj" />
+    <ProjectReference Include="../Liaison.Messaging.Core/Liaison.Messaging.Core.csproj" />
+  </ItemGroup>
+</Project>
