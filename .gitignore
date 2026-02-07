@@ -1,0 +1,23 @@
+# Build outputs
+bin/
+obj/
+artifacts/
+TestResults/
+
+# NuGet artifacts
+*.nupkg
+*.snupkg
+
+# IDEs and editors
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.cache
+
+# Logs
+*.log
+
+# macOS
+.DS_Store

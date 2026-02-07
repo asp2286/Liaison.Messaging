@@ -1,0 +1,5 @@
+<Project>
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <None Include="Package.md" Pack="true" PackagePath="/" Visible="false" Condition="Exists('Package.md')" />
+  </ItemGroup>
+</Project>

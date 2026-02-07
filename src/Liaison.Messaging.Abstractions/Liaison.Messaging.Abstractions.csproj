@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <PackageId>Liaison.Messaging.Abstractions</PackageId>
+    <Description>Provider-agnostic contracts for Liaison.Messaging.</Description>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
+    <IsPackable>true</IsPackable>
+    <PackageId>Liaison.Messaging.Core</PackageId>
+    <Description>Core runtime primitives and policy abstractions for Liaison.Messaging.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Liaison.Messaging.Abstractions/Liaison.Messaging.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

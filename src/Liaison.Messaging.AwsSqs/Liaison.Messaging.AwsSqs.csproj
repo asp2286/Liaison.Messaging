@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>true</IsPackable>
+    <PackageId>Liaison.Messaging.AwsSqs</PackageId>
+    <Description>AWS SQS provider implementation for Liaison.Messaging.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Liaison.Messaging.Abstractions/Liaison.Messaging.Abstractions.csproj" />
+    <ProjectReference Include="../Liaison.Messaging.Core/Liaison.Messaging.Core.csproj" />
+    <ProjectReference Include="../Liaison.Messaging.DependencyInjection/Liaison.Messaging.DependencyInjection.csproj" />
+  </ItemGroup>
+</Project>
