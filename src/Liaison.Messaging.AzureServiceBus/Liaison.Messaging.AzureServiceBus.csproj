@@ -9,6 +9,9 @@
   <ItemGroup>
     <ProjectReference Include="../Liaison.Messaging.Abstractions/Liaison.Messaging.Abstractions.csproj" />
     <ProjectReference Include="../Liaison.Messaging.Core/Liaison.Messaging.Core.csproj" />
-    <ProjectReference Include="../Liaison.Messaging.DependencyInjection/Liaison.Messaging.DependencyInjection.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
   </ItemGroup>
 </Project>
