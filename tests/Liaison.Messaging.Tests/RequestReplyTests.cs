@@ -92,6 +92,26 @@ public class RequestReplyTests
         Assert.False(string.IsNullOrWhiteSpace(reply.Error));
     }
 
+    [Fact]
+    public async Task SendAsync_WorksWithOptionalLargePayloadPolicyAndStore()
+    {
+        var handler = new DelegateRequestHandler<TestRequest, string>((request, _, _) =>
+            Task.FromResult($"processed:{request.Value}"));
+        var policy = new DefaultLargePayloadPolicy(new LargePayloadPolicyOptions(ThresholdBytes: 4, UseCompression: true));
+        var store = new MemoryPayloadStore();
+        var client = new InMemoryRequestClient<TestRequest, string>(
+            handler,
+            timeout: null,
+            largePayloadPolicy: policy,
+            payloadStore: store);
+
+        var reply = await client.SendAsync(new TestRequest(new string('y', 128)));
+
+        Assert.Equal(ReplyStatus.Success, reply.Status);
+        Assert.Equal($"processed:{new string('y', 128)}", reply.Value);
+        Assert.Null(reply.Error);
+    }
+
     private sealed record TestRequest(string Value);
 
     private sealed class DelegateRequestHandler<TRequest, TReply> : IRequestHandler<TRequest, TReply>

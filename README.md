@@ -25,10 +25,11 @@ The design targets explicit configuration, predictable behavior, and provider is
 - `samples/`: minimal usage samples.
 - `docs/`: roadmap and architecture notes.
 
-## Docs
+## Documentation
 
 - Project Direction: `docs/roadmap.md`
 - Routing & Semantics: `docs/routing.md`
+- Large Payload Strategy → `docs/large-payloads.md`
 
 ## Project Direction
 

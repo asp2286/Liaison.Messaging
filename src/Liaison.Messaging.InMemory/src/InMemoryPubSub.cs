@@ -16,6 +16,8 @@ public sealed class InMemoryPubSub<T> : IMessagePublisher<T>
     private readonly ConcurrentDictionary<long, IMessageHandler<T>> _handlers = new();
     private readonly IMessageEnvelopeFactory _envelopeFactory;
     private readonly IMessageContextFactory _contextFactory;
+    private readonly ILargePayloadPolicy? _largePayloadPolicy;
+    private readonly IPayloadStore? _payloadStore;
     private long _nextHandlerId;
 
     /// <summary>
@@ -30,11 +32,21 @@ public sealed class InMemoryPubSub<T> : IMessagePublisher<T>
     /// Initializes a new instance of the <see cref="InMemoryPubSub{T}"/> type using serializer-based default factories.
     /// </summary>
     /// <param name="serializer">The serializer used to encode and decode payloads.</param>
+    /// <param name="largePayloadPolicy">Optional large payload policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large payload policy is supplied.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="serializer"/> is <see langword="null"/>.</exception>
-    public InMemoryPubSub(IMessageSerializer serializer)
+    /// <exception cref="ArgumentException">
+    /// Thrown when exactly one of <paramref name="largePayloadPolicy"/> or <paramref name="payloadStore"/> is provided.
+    /// </exception>
+    public InMemoryPubSub(
+        IMessageSerializer serializer,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
         : this(
             new MessageEnvelopeFactory(serializer ?? throw new ArgumentNullException(nameof(serializer)), new GuidMessageIdGenerator()),
-            new MessageContextFactory())
+            new MessageContextFactory(),
+            largePayloadPolicy,
+            payloadStore)
     {
     }
 
@@ -43,13 +55,30 @@ public sealed class InMemoryPubSub<T> : IMessagePublisher<T>
     /// </summary>
     /// <param name="envelopeFactory">The envelope factory used during publish.</param>
     /// <param name="contextFactory">The context factory used during publish.</param>
+    /// <param name="largePayloadPolicy">Optional large payload policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large payload policy is supplied.</param>
     /// <exception cref="ArgumentNullException">
     /// Thrown when <paramref name="envelopeFactory"/> or <paramref name="contextFactory"/> is <see langword="null"/>.
     /// </exception>
-    public InMemoryPubSub(IMessageEnvelopeFactory envelopeFactory, IMessageContextFactory contextFactory)
+    /// <exception cref="ArgumentException">
+    /// Thrown when exactly one of <paramref name="largePayloadPolicy"/> or <paramref name="payloadStore"/> is provided.
+    /// </exception>
+    public InMemoryPubSub(
+        IMessageEnvelopeFactory envelopeFactory,
+        IMessageContextFactory contextFactory,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
     {
         _envelopeFactory = envelopeFactory ?? throw new ArgumentNullException(nameof(envelopeFactory));
         _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
+        if ((largePayloadPolicy is null) != (payloadStore is null))
+        {
+            throw new ArgumentException(
+                "Large payload policy and payload store must both be provided or both be null.");
+        }
+
+        _largePayloadPolicy = largePayloadPolicy;
+        _payloadStore = payloadStore;
     }
 
     /// <summary>
@@ -80,7 +109,8 @@ public sealed class InMemoryPubSub<T> : IMessagePublisher<T>
         }
 
         var envelope = _envelopeFactory.Create(message);
-        var context = _contextFactory.Create(envelope);
+        var deliveryEnvelope = await PrepareDeliveryEnvelopeAsync(envelope, cancellationToken).ConfigureAwait(false);
+        var context = _contextFactory.Create(deliveryEnvelope);
         var snapshot = _handlers.OrderBy(pair => pair.Key).ToArray();
 
         foreach (var pair in snapshot)
@@ -92,6 +122,21 @@ public sealed class InMemoryPubSub<T> : IMessagePublisher<T>
                 () => handler.HandleAsync(message, context, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private async Task<MessageEnvelope> PrepareDeliveryEnvelopeAsync(MessageEnvelope envelope, CancellationToken cancellationToken)
+    {
+        if (_largePayloadPolicy is null || _payloadStore is null)
+        {
+            return envelope;
+        }
+
+        var outboundEnvelope = await _largePayloadPolicy
+            .PrepareOutboundAsync(envelope, _payloadStore, expiresAtUtc: null, cancellationToken)
+            .ConfigureAwait(false);
+        return await _largePayloadPolicy
+            .ResolveInboundAsync(outboundEnvelope, _payloadStore, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private sealed class Subscription : IMessageSubscription

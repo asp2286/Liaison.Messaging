@@ -16,20 +16,33 @@ public sealed class InMemoryRequestClient<TRequest, TReply> : IRequestClient<TRe
     private readonly IRequestTimeoutPolicy _timeoutPolicy;
     private readonly IMessageEnvelopeFactory _envelopeFactory;
     private readonly IMessageContextFactory _contextFactory;
+    private readonly ILargePayloadPolicy? _largePayloadPolicy;
+    private readonly IPayloadStore? _payloadStore;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="InMemoryRequestClient{TRequest, TReply}"/> type.
     /// </summary>
     /// <param name="handler">The single handler that serves requests.</param>
     /// <param name="timeout">The optional timeout for each request.</param>
+    /// <param name="largePayloadPolicy">Optional large payload policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large payload policy is supplied.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="handler"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="timeout"/> is negative.</exception>
-    public InMemoryRequestClient(IRequestHandler<TRequest, TReply> handler, TimeSpan? timeout = null)
+    /// <exception cref="ArgumentException">
+    /// Thrown when exactly one of <paramref name="largePayloadPolicy"/> or <paramref name="payloadStore"/> is provided.
+    /// </exception>
+    public InMemoryRequestClient(
+        IRequestHandler<TRequest, TReply> handler,
+        TimeSpan? timeout = null,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
         : this(
             handler,
             timeoutPolicy: timeout.HasValue
                 ? new FixedRequestTimeoutPolicy(timeout.Value)
-                : new FixedRequestTimeoutPolicy(Timeout.InfiniteTimeSpan))
+                : new FixedRequestTimeoutPolicy(Timeout.InfiniteTimeSpan),
+            largePayloadPolicy,
+            payloadStore)
     {
     }
 
@@ -38,15 +51,26 @@ public sealed class InMemoryRequestClient<TRequest, TReply> : IRequestClient<TRe
     /// </summary>
     /// <param name="handler">The single handler that serves requests.</param>
     /// <param name="timeoutPolicy">The timeout policy applied to each request.</param>
+    /// <param name="largePayloadPolicy">Optional large payload policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large payload policy is supplied.</param>
     /// <exception cref="ArgumentNullException">
     /// Thrown when <paramref name="handler"/> or <paramref name="timeoutPolicy"/> is <see langword="null"/>.
     /// </exception>
-    public InMemoryRequestClient(IRequestHandler<TRequest, TReply> handler, IRequestTimeoutPolicy timeoutPolicy)
+    /// <exception cref="ArgumentException">
+    /// Thrown when exactly one of <paramref name="largePayloadPolicy"/> or <paramref name="payloadStore"/> is provided.
+    /// </exception>
+    public InMemoryRequestClient(
+        IRequestHandler<TRequest, TReply> handler,
+        IRequestTimeoutPolicy timeoutPolicy,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
         : this(
             handler,
             timeoutPolicy,
             new MessageEnvelopeFactory(new SystemTextJsonMessageSerializer(), new GuidMessageIdGenerator()),
-            new MessageContextFactory())
+            new MessageContextFactory(),
+            largePayloadPolicy,
+            payloadStore)
     {
     }
 
@@ -57,19 +81,34 @@ public sealed class InMemoryRequestClient<TRequest, TReply> : IRequestClient<TRe
     /// <param name="timeoutPolicy">The timeout policy applied to each request.</param>
     /// <param name="envelopeFactory">The envelope factory used to create request envelopes.</param>
     /// <param name="contextFactory">The context factory used to create handler contexts.</param>
+    /// <param name="largePayloadPolicy">Optional large payload policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large payload policy is supplied.</param>
     /// <exception cref="ArgumentNullException">
     /// Thrown when any constructor dependency is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentException">
+    /// Thrown when exactly one of <paramref name="largePayloadPolicy"/> or <paramref name="payloadStore"/> is provided.
     /// </exception>
     public InMemoryRequestClient(
         IRequestHandler<TRequest, TReply> handler,
         IRequestTimeoutPolicy timeoutPolicy,
         IMessageEnvelopeFactory envelopeFactory,
-        IMessageContextFactory contextFactory)
+        IMessageContextFactory contextFactory,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
     {
         _handler = handler ?? throw new ArgumentNullException(nameof(handler));
         _timeoutPolicy = timeoutPolicy ?? throw new ArgumentNullException(nameof(timeoutPolicy));
         _envelopeFactory = envelopeFactory ?? throw new ArgumentNullException(nameof(envelopeFactory));
         _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
+        if ((largePayloadPolicy is null) != (payloadStore is null))
+        {
+            throw new ArgumentException(
+                "Large payload policy and payload store must both be provided or both be null.");
+        }
+
+        _largePayloadPolicy = largePayloadPolicy;
+        _payloadStore = payloadStore;
     }
 
     /// <inheritdoc/>
@@ -88,7 +127,8 @@ public sealed class InMemoryRequestClient<TRequest, TReply> : IRequestClient<TRe
         var operationToken = linkedCts?.Token ?? cancellationToken;
 
         var envelope = _envelopeFactory.Create(request);
-        var context = _contextFactory.Create(envelope);
+        var requestEnvelope = await PrepareRequestEnvelopeAsync(envelope, operationToken).ConfigureAwait(false);
+        var context = _contextFactory.Create(requestEnvelope);
 
         try
         {
@@ -111,5 +151,22 @@ public sealed class InMemoryRequestClient<TRequest, TReply> : IRequestClient<TRe
         {
             return new Reply<TReply>(ReplyStatus.Failure, value: default, error: ex.Message);
         }
+    }
+
+    private async Task<MessageEnvelope> PrepareRequestEnvelopeAsync(
+        MessageEnvelope envelope,
+        CancellationToken cancellationToken)
+    {
+        if (_largePayloadPolicy is null || _payloadStore is null)
+        {
+            return envelope;
+        }
+
+        var outboundEnvelope = await _largePayloadPolicy
+            .PrepareOutboundAsync(envelope, _payloadStore, expiresAtUtc: null, cancellationToken)
+            .ConfigureAwait(false);
+        return await _largePayloadPolicy
+            .ResolveInboundAsync(outboundEnvelope, _payloadStore, cancellationToken)
+            .ConfigureAwait(false);
     }
 }
