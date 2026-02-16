@@ -13,6 +13,8 @@ The design targets explicit configuration, predictable behavior, and provider is
 
 - First provider: Azure Service Bus.
 - Planned provider: AWS SQS.
+- Payload storage provider: Azure Blob Storage.
+- Payload storage provider: AWS S3.
 
 ## Repository Structure
 
@@ -22,6 +24,8 @@ The design targets explicit configuration, predictable behavior, and provider is
 - `src/Liaison.Messaging.Hosting`: hosting integration.
 - `src/Liaison.Messaging.AzureServiceBus`: Azure Service Bus provider.
 - `src/Liaison.Messaging.AwsSqs`: AWS SQS provider (planned expansion).
+- `src/Liaison.Messaging.AzureStorage`: Azure Blob `IPayloadStore` provider.
+- `src/Liaison.Messaging.AwsStorage`: AWS S3 `IPayloadStore` provider.
 - `samples/`: minimal usage samples.
 - `docs/`: roadmap and architecture notes.
 
