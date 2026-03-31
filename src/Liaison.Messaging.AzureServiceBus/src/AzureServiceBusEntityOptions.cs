@@ -8,6 +8,14 @@ using System;
 public sealed record AzureServiceBusEntityOptions
 {
     /// <summary>
+    /// Initializes a new instance of the <see cref="AzureServiceBusEntityOptions"/> type
+    /// with default values for use with the <c>Action&lt;AzureServiceBusEntityOptions&gt;</c> configuration pattern.
+    /// </summary>
+    public AzureServiceBusEntityOptions()
+    {
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="AzureServiceBusEntityOptions"/> type.
     /// </summary>
     /// <param name="entityName">Queue or topic name.</param>
@@ -30,17 +38,17 @@ public sealed record AzureServiceBusEntityOptions
     }
 
     /// <summary>
-    /// Gets the queue or topic name.
+    /// Gets or sets the queue or topic name.
     /// </summary>
-    public string EntityName { get; }
+    public string EntityName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets the entity kind.
+    /// Gets or sets the entity kind.
     /// </summary>
-    public AzureServiceBusEntityKind Kind { get; }
+    public AzureServiceBusEntityKind Kind { get; set; }
 
     /// <summary>
-    /// Gets the subscription name when a topic subscription is used for receive operations.
+    /// Gets or sets the subscription name when a topic subscription is used for receive operations.
     /// </summary>
-    public string? SubscriptionName { get; }
+    public string? SubscriptionName { get; set; }
 }

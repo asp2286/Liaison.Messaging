@@ -9,6 +9,14 @@ using System.Threading;
 public sealed record AzureServiceBusRequestReplyOptions
 {
     /// <summary>
+    /// Initializes a new instance of the <see cref="AzureServiceBusRequestReplyOptions"/> type
+    /// with default values for use with the <c>Action&lt;AzureServiceBusRequestReplyOptions&gt;</c> configuration pattern.
+    /// </summary>
+    public AzureServiceBusRequestReplyOptions()
+    {
+    }
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="AzureServiceBusRequestReplyOptions"/> type.
     /// </summary>
     /// <param name="requestQueueName">Request queue name.</param>
@@ -42,17 +50,17 @@ public sealed record AzureServiceBusRequestReplyOptions
     }
 
     /// <summary>
-    /// Gets the request queue name.
+    /// Gets or sets the request queue name.
     /// </summary>
-    public string RequestQueueName { get; }
+    public string RequestQueueName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets the reply queue name.
+    /// Gets or sets the reply queue name.
     /// </summary>
-    public string ReplyQueueName { get; }
+    public string ReplyQueueName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets the default timeout value.
+    /// Gets or sets the default timeout value.
     /// </summary>
-    public TimeSpan DefaultTimeout { get; }
+    public TimeSpan DefaultTimeout { get; set; }
 }
