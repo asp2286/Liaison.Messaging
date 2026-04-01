@@ -1,11 +1,13 @@
 namespace Liaison.Messaging.AzureServiceBus;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
 using Liaison.Messaging;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Sends request messages over Azure Service Bus and awaits correlated replies.
@@ -17,9 +19,18 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
     private readonly IMessageEnvelopeFactory _envelopeFactory;
     private readonly IMessageSerializer _serializer;
     private readonly IRequestTimeoutPolicy? _timeoutPolicy;
+    private readonly ILogger? _logger;
     private readonly AzureServiceBusRequestReplyOptions _options;
     private readonly ServiceBusSender _requestSender;
     private readonly ServiceBusReceiver _replyReceiver;
+
+    // Correlation-based reply dispatch: a shared background loop receives all reply
+    // messages and dispatches them to the matching TaskCompletionSource by correlation ID.
+    // This is safe for concurrent SendAsync calls because each call registers its own TCS
+    // before sending the request. Unmatched replies are dead-lettered.
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<ServiceBusReceivedMessage>> _pendingRequests = new(StringComparer.Ordinal);
+    private readonly CancellationTokenSource _backgroundCts = new();
+    private readonly Task _backgroundLoop;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AzureServiceBusRequestClient{TRequest, TReply}"/> type.
@@ -29,18 +40,21 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
     /// <param name="serializer">Serializer used for reply deserialization.</param>
     /// <param name="timeoutPolicy">Optional timeout policy.</param>
     /// <param name="options">Request/reply queue settings.</param>
+    /// <param name="logger">Optional logger for diagnostics. When <see langword="null"/>, receive-loop errors are silently ignored.</param>
     /// <exception cref="ArgumentNullException">Thrown when required dependencies are <see langword="null"/>.</exception>
     public AzureServiceBusRequestClient(
         ServiceBusClient client,
         IMessageEnvelopeFactory envelopeFactory,
         IMessageSerializer serializer,
         IRequestTimeoutPolicy? timeoutPolicy,
-        AzureServiceBusRequestReplyOptions options)
+        AzureServiceBusRequestReplyOptions options,
+        ILogger<AzureServiceBusRequestClient<TRequest, TReply>>? logger = null)
     {
         _envelopeFactory = envelopeFactory ?? throw new ArgumentNullException(nameof(envelopeFactory));
         _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
         _timeoutPolicy = timeoutPolicy;
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _logger = logger;
 
         var busClient = client ?? throw new ArgumentNullException(nameof(client));
         _requestSender = busClient.CreateSender(_options.RequestQueueName);
@@ -48,6 +62,8 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
         {
             ReceiveMode = ServiceBusReceiveMode.PeekLock,
         });
+
+        _backgroundLoop = Task.Run(() => ReceiveLoopAsync(_backgroundCts.Token));
     }
 
     /// <inheritdoc />
@@ -65,50 +81,42 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
             : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         var token = linkedCts.Token;
 
+        var requestEnvelope = _envelopeFactory.Create(request, headers: null, correlationId: null);
+        var correlationId = requestEnvelope.MessageId;
+
+        var tcs = new TaskCompletionSource<ServiceBusReceivedMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _pendingRequests[correlationId] = tcs;
+
         try
         {
-            var requestEnvelope = _envelopeFactory.Create(request, headers: null, correlationId: null);
             var requestMessage = AzureServiceBusEnvelopeMapper.ToServiceBusMessage(requestEnvelope);
-            requestMessage.CorrelationId = requestEnvelope.MessageId;
+            requestMessage.CorrelationId = correlationId;
             requestMessage.ReplyTo = _options.ReplyQueueName;
 
             await _requestSender.SendMessageAsync(requestMessage, token).ConfigureAwait(false);
 
-            while (true)
+            // Register cancellation to unblock the TCS when the token fires.
+            using var registration = token.Register(static state => ((TaskCompletionSource<ServiceBusReceivedMessage>)state!).TrySetCanceled(), tcs);
+
+            var receivedMessage = await tcs.Task.ConfigureAwait(false);
+
+            // Complete the reply message since we have successfully received it.
+            await _replyReceiver.CompleteMessageAsync(receivedMessage, CancellationToken.None).ConfigureAwait(false);
+
+            var replyEnvelope = AzureServiceBusEnvelopeMapper.FromServiceBusReceivedMessage(receivedMessage);
+            if (!TryGetStatusHeaders(replyEnvelope.Headers, out var status, out var error))
             {
-                var receivedMessages = await _replyReceiver.ReceiveMessagesAsync(
-                        maxMessages: 10,
-                        maxWaitTime: TimeSpan.FromSeconds(1),
-                        cancellationToken: token)
-                    .ConfigureAwait(false);
-
-                foreach (var receivedMessage in receivedMessages)
-                {
-                    if (!string.Equals(receivedMessage.CorrelationId, requestEnvelope.MessageId, StringComparison.Ordinal))
-                    {
-                        await _replyReceiver.AbandonMessageAsync(receivedMessage, cancellationToken: token).ConfigureAwait(false);
-                        continue;
-                    }
-
-                    var replyEnvelope = AzureServiceBusEnvelopeMapper.FromServiceBusReceivedMessage(receivedMessage);
-                    if (!TryGetStatusHeaders(replyEnvelope.Headers, out var status, out var error))
-                    {
-                        var value = _serializer.Deserialize<TReply>(replyEnvelope.Body);
-                        await _replyReceiver.CompleteMessageAsync(receivedMessage, token).ConfigureAwait(false);
-                        return new Reply<TReply>(ReplyStatus.Success, value, error: null);
-                    }
-
-                    if (status != ReplyStatus.Success)
-                    {
-                        await _replyReceiver.CompleteMessageAsync(receivedMessage, token).ConfigureAwait(false);
-                        return new Reply<TReply>(status, value: default, error: error);
-                    }
-
-                    var successValue = _serializer.Deserialize<TReply>(replyEnvelope.Body);
-                    await _replyReceiver.CompleteMessageAsync(receivedMessage, token).ConfigureAwait(false);
-                    return new Reply<TReply>(ReplyStatus.Success, successValue, error: null);
-                }
+                var value = _serializer.Deserialize<TReply>(replyEnvelope.Body);
+                return new Reply<TReply>(ReplyStatus.Success, value, error: null);
             }
+
+            if (status != ReplyStatus.Success)
+            {
+                return new Reply<TReply>(status, value: default, error: error);
+            }
+
+            var successValue = _serializer.Deserialize<TReply>(replyEnvelope.Body);
+            return new Reply<TReply>(ReplyStatus.Success, successValue, error: null);
         }
         catch (OperationCanceledException ex) when (timeoutCts is not null && timeoutCts.IsCancellationRequested)
         {
@@ -122,13 +130,102 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
         {
             return new Reply<TReply>(ReplyStatus.Failure, value: default, error: ex.Message);
         }
+        finally
+        {
+            _pendingRequests.TryRemove(correlationId, out _);
+        }
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
+        _backgroundCts.Cancel();
+
+        try
+        {
+            await _backgroundLoop.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown.
+        }
+
+        // Cancel all pending requests so callers are unblocked.
+        foreach (var pair in _pendingRequests)
+        {
+            pair.Value.TrySetCanceled();
+        }
+
+        _pendingRequests.Clear();
+
         await _requestSender.DisposeAsync().ConfigureAwait(false);
         await _replyReceiver.DisposeAsync().ConfigureAwait(false);
+        _backgroundCts.Dispose();
+    }
+
+    /// <summary>
+    /// Background loop that receives reply messages and dispatches them to pending callers.
+    /// </summary>
+    private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var messages = await _replyReceiver.ReceiveMessagesAsync(
+                        maxMessages: 10,
+                        maxWaitTime: TimeSpan.FromSeconds(1),
+                        cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+
+                foreach (var message in messages)
+                {
+                    if (!string.IsNullOrEmpty(message.CorrelationId) &&
+                        _pendingRequests.TryRemove(message.CorrelationId, out var tcs))
+                    {
+                        tcs.TrySetResult(message);
+                    }
+                    else
+                    {
+                        // No pending request matches this reply — dead-letter it.
+                        try
+                        {
+                            await _replyReceiver.DeadLetterMessageAsync(
+                                    message,
+                                    deadLetterReason: "NoMatchingRequest",
+                                    deadLetterErrorDescription: "No pending request matched the correlation ID.",
+                                    cancellationToken: cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            _logger?.LogError(
+                                ex,
+                                "Failed to dead-letter unmatched reply message. CorrelationId={CorrelationId}",
+                                message.CorrelationId);
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "Error in reply receive loop.");
+
+                // Brief delay to avoid tight spin on persistent errors.
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }
     }
 
     private static bool TryGetStatusHeaders(

@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
 using Liaison.Messaging;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Represents an active Azure Service Bus subscription processor.
@@ -15,6 +16,7 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
     private readonly IMessageSerializer _serializer;
     private readonly IMessageContextFactory _contextFactory;
     private readonly IMessageHandler<T> _handler;
+    private readonly ILogger? _logger;
     private readonly ServiceBusProcessor _processor;
     private int _isDisposed;
 
@@ -26,6 +28,7 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
     /// <param name="contextFactory">Factory used to create message contexts.</param>
     /// <param name="entityOptions">Queue or topic subscription settings.</param>
     /// <param name="handler">Message handler invoked for each received message.</param>
+    /// <param name="logger">Optional logger for diagnostics. When <see langword="null"/>, broker errors are silently ignored.</param>
     /// <exception cref="ArgumentNullException">Thrown when required dependencies are <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Thrown when required entity settings are invalid.</exception>
     public AzureServiceBusSubscription(
@@ -33,16 +36,27 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
         IMessageSerializer serializer,
         IMessageContextFactory contextFactory,
         AzureServiceBusEntityOptions entityOptions,
-        IMessageHandler<T> handler)
+        IMessageHandler<T> handler,
+        ILogger<AzureServiceBusSubscription<T>>? logger = null)
     {
         _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
         _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
         _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        _logger = logger;
 
         _processor = CreateProcessor(client ?? throw new ArgumentNullException(nameof(client)), entityOptions);
         _processor.ProcessMessageAsync += OnProcessMessageAsync;
         _processor.ProcessErrorAsync += OnProcessErrorAsync;
-        _processor.StartProcessingAsync(CancellationToken.None).GetAwaiter().GetResult();
+    }
+
+    /// <summary>
+    /// Starts processing messages from the configured entity.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A task that completes when the processor has started.</returns>
+    public Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        return _processor.StartProcessingAsync(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -112,8 +126,14 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
         }
     }
 
-    private static Task OnProcessErrorAsync(ProcessErrorEventArgs args)
+    private Task OnProcessErrorAsync(ProcessErrorEventArgs args)
     {
+        _logger?.LogError(
+            args.Exception,
+            "Azure Service Bus processing error. Source={ErrorSource} Entity={EntityPath} Namespace={Namespace}",
+            args.ErrorSource,
+            args.EntityPath,
+            args.FullyQualifiedNamespace);
         return Task.CompletedTask;
     }
 }
