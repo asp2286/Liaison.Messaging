@@ -18,6 +18,7 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
     private readonly IMessageHandler<T> _handler;
     private readonly ILogger? _logger;
     private readonly ServiceBusProcessor _processor;
+    private int _isStarted;
     private int _isDisposed;
 
     /// <summary>
@@ -56,6 +57,11 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
     /// <returns>A task that completes when the processor has started.</returns>
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
+        if (Interlocked.CompareExchange(ref _isStarted, 1, 0) != 0)
+        {
+            return Task.CompletedTask;
+        }
+
         return _processor.StartProcessingAsync(cancellationToken);
     }
 
@@ -120,8 +126,12 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
             {
                 await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
             }
-            catch (Exception) when (args.CancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (args.CancellationToken.IsCancellationRequested)
             {
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Failed to abandon message after handler failure.");
             }
         }
     }

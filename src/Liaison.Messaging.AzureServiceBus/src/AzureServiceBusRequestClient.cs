@@ -85,7 +85,16 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
         var correlationId = requestEnvelope.MessageId;
 
         var tcs = new TaskCompletionSource<ServiceBusReceivedMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _pendingRequests[correlationId] = tcs;
+        if (!_pendingRequests.TryAdd(correlationId, tcs))
+        {
+            var duplicateCorrelationIdException =
+                new InvalidOperationException("Duplicate correlation ID detected. This is a bug.");
+            tcs.TrySetException(duplicateCorrelationIdException);
+            return new Reply<TReply>(
+                ReplyStatus.Failure,
+                value: default,
+                error: duplicateCorrelationIdException.Message);
+        }
 
         try
         {
@@ -187,7 +196,9 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
                     }
                     else
                     {
-                        // No pending request matches this reply — dead-letter it.
+                        // Unmatched replies are dead-lettered. Reply queues must not be shared
+                        // across independent client instances. Each client instance should have
+                        // a dedicated reply queue.
                         try
                         {
                             await _replyReceiver.DeadLetterMessageAsync(
@@ -214,6 +225,8 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
             catch (Exception ex)
             {
                 _logger?.LogError(ex, "Error in reply receive loop.");
+                // Known limitation by design: pending request TCS entries are not faulted here.
+                // They complete through normal timeout/cancellation/disposal paths.
 
                 // Brief delay to avoid tight spin on persistent errors.
                 try

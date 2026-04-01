@@ -21,6 +21,7 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
     private readonly ServiceBusProcessor _processor;
     private readonly ServiceBusSender _replySender;
     private readonly IMessageIdGenerator _messageIdGenerator;
+    private int _isStarted;
     private int _isDisposed;
 
     /// <summary>
@@ -70,6 +71,11 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
     /// <returns>A task that completes when the processor has started.</returns>
     public Task StartAsync(CancellationToken cancellationToken = default)
     {
+        if (Interlocked.CompareExchange(ref _isStarted, 1, 0) != 0)
+        {
+            return Task.CompletedTask;
+        }
+
         return _processor.StartProcessingAsync(cancellationToken);
     }
 
@@ -128,12 +134,23 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
         {
             // Reply could not be sent — abandon the request so it can be retried.
             _logger?.LogError(ex, "Failed to send reply for request. CorrelationId={CorrelationId}", correlationId);
-            await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
+            await TryAbandonMessageAsync(args, correlationId).ConfigureAwait(false);
             return;
         }
 
         // Step 3: Reply was sent successfully — complete the request message.
-        await args.CompleteMessageAsync(args.Message, args.CancellationToken).ConfigureAwait(false);
+        try
+        {
+            await args.CompleteMessageAsync(args.Message, args.CancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(
+                ex,
+                "Failed to complete request message. CorrelationId={CorrelationId}",
+                correlationId);
+            await TryAbandonMessageAsync(args, correlationId).ConfigureAwait(false);
+        }
     }
 
     private Task OnProcessErrorAsync(ProcessErrorEventArgs args)
@@ -171,5 +188,20 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
         }
 
         await _replySender.SendMessageAsync(replyMessage, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task TryAbandonMessageAsync(ProcessMessageEventArgs args, string? correlationId)
+    {
+        try
+        {
+            await args.AbandonMessageAsync(args.Message, cancellationToken: args.CancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(
+                ex,
+                "Failed to abandon request message. CorrelationId={CorrelationId}",
+                correlationId);
+        }
     }
 }

@@ -33,8 +33,8 @@ public static class AzureServiceBusServiceCollectionExtensions
         }
 
         var options = new AzureServiceBusConnectionOptions(connectionString);
-        services.AddSingleton(options);
-        services.AddSingleton(new ServiceBusClient(options.ConnectionString));
+        services.TryAddSingleton(options);
+        services.TryAddSingleton(sp => new ServiceBusClient(sp.GetRequiredService<AzureServiceBusConnectionOptions>().ConnectionString));
         return services;
     }
 
