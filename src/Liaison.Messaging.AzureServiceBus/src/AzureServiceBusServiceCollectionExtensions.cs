@@ -63,7 +63,11 @@ public static class AzureServiceBusServiceCollectionExtensions
         {
             var client = sp.GetRequiredService<ServiceBusClient>();
             var envelopeFactory = sp.GetRequiredService<IMessageEnvelopeFactory>();
-            return new AzureServiceBusPublisher<T>(client, envelopeFactory, entityOptions);
+            var largePayloadPolicy = sp.GetService<ILargePayloadPolicy>();
+            var payloadStore = sp.GetService<IPayloadStore>();
+            return new AzureServiceBusPublisher<T>(
+                client, envelopeFactory, entityOptions,
+                largePayloadPolicy: largePayloadPolicy, payloadStore: payloadStore);
         });
 
         return services;
@@ -97,7 +101,13 @@ public static class AzureServiceBusServiceCollectionExtensions
         {
             var client = sp.GetRequiredService<ServiceBusClient>();
             var envelopeFactory = sp.GetRequiredService<IMessageEnvelopeFactory>();
-            return new AzureServiceBusPublisher<T>(client, envelopeFactory, entityOptions, router);
+            var largePayloadPolicy = sp.GetService<ILargePayloadPolicy>();
+            var payloadStore = sp.GetService<IPayloadStore>();
+            return new AzureServiceBusPublisher<T>(
+                client, envelopeFactory, entityOptions,
+                router: router,
+                largePayloadPolicy: largePayloadPolicy,
+                payloadStore: payloadStore);
         });
 
         return services;
@@ -137,7 +147,11 @@ public static class AzureServiceBusServiceCollectionExtensions
             var contextFactory = sp.GetRequiredService<IMessageContextFactory>();
             var handler = sp.GetRequiredService<THandler>();
             var logger = sp.GetService<ILogger<AzureServiceBusSubscription<T>>>();
-            return new AzureServiceBusSubscription<T>(client, serializer, contextFactory, entityOptions, handler, logger);
+            var largePayloadPolicy = sp.GetService<ILargePayloadPolicy>();
+            var payloadStore = sp.GetService<IPayloadStore>();
+            return new AzureServiceBusSubscription<T>(
+                client, serializer, contextFactory, entityOptions, handler, logger,
+                largePayloadPolicy, payloadStore);
         });
 
         return services;
@@ -173,8 +187,11 @@ public static class AzureServiceBusServiceCollectionExtensions
             var serializer = sp.GetRequiredService<IMessageSerializer>();
             var timeoutPolicy = sp.GetService<IRequestTimeoutPolicy>();
             var logger = sp.GetService<ILogger<AzureServiceBusRequestClient<TRequest, TReply>>>();
+            var largePayloadPolicy = sp.GetService<ILargePayloadPolicy>();
+            var payloadStore = sp.GetService<IPayloadStore>();
             return new AzureServiceBusRequestClient<TRequest, TReply>(
-                client, envelopeFactory, serializer, timeoutPolicy, options, logger);
+                client, envelopeFactory, serializer, timeoutPolicy, options, logger,
+                largePayloadPolicy, payloadStore);
         });
 
         return services;
@@ -214,8 +231,11 @@ public static class AzureServiceBusServiceCollectionExtensions
             var contextFactory = sp.GetRequiredService<IMessageContextFactory>();
             var handler = sp.GetRequiredService<THandler>();
             var logger = sp.GetService<ILogger<AzureServiceBusRequestProcessor<TRequest, TReply>>>();
+            var largePayloadPolicy = sp.GetService<ILargePayloadPolicy>();
+            var payloadStore = sp.GetService<IPayloadStore>();
             return new AzureServiceBusRequestProcessor<TRequest, TReply>(
-                client, serializer, contextFactory, options, handler, logger);
+                client, serializer, contextFactory, options, handler, logger,
+                largePayloadPolicy, payloadStore);
         });
 
         return services;

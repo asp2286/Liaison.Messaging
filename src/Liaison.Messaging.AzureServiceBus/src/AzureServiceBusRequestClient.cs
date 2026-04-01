@@ -20,6 +20,8 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
     private readonly IMessageSerializer _serializer;
     private readonly IRequestTimeoutPolicy? _timeoutPolicy;
     private readonly ILogger? _logger;
+    private readonly ILargePayloadPolicy? _largePayloadPolicy;
+    private readonly IPayloadStore? _payloadStore;
     private readonly AzureServiceBusRequestReplyOptions _options;
     private readonly ServiceBusSender _requestSender;
     private readonly ServiceBusReceiver _replyReceiver;
@@ -41,6 +43,8 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
     /// <param name="timeoutPolicy">Optional timeout policy.</param>
     /// <param name="options">Request/reply queue settings.</param>
     /// <param name="logger">Optional logger for diagnostics. When <see langword="null"/>, receive-loop errors are silently ignored.</param>
+    /// <param name="largePayloadPolicy">Optional large-payload externalization policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large-payload policy is configured.</param>
     /// <exception cref="ArgumentNullException">Thrown when required dependencies are <see langword="null"/>.</exception>
     public AzureServiceBusRequestClient(
         ServiceBusClient client,
@@ -48,13 +52,17 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
         IMessageSerializer serializer,
         IRequestTimeoutPolicy? timeoutPolicy,
         AzureServiceBusRequestReplyOptions options,
-        ILogger<AzureServiceBusRequestClient<TRequest, TReply>>? logger = null)
+        ILogger<AzureServiceBusRequestClient<TRequest, TReply>>? logger = null,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
     {
         _envelopeFactory = envelopeFactory ?? throw new ArgumentNullException(nameof(envelopeFactory));
         _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
         _timeoutPolicy = timeoutPolicy;
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger;
+        _largePayloadPolicy = largePayloadPolicy;
+        _payloadStore = payloadStore;
 
         var busClient = client ?? throw new ArgumentNullException(nameof(client));
         _requestSender = busClient.CreateSender(_options.RequestQueueName);
@@ -98,6 +106,8 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
 
         try
         {
+            requestEnvelope = await ApplyOutboundPolicyAsync(requestEnvelope, token).ConfigureAwait(false);
+
             var requestMessage = AzureServiceBusEnvelopeMapper.ToServiceBusMessage(requestEnvelope);
             requestMessage.CorrelationId = correlationId;
             requestMessage.ReplyTo = _options.ReplyQueueName;
@@ -113,6 +123,8 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
             await _replyReceiver.CompleteMessageAsync(receivedMessage, CancellationToken.None).ConfigureAwait(false);
 
             var replyEnvelope = AzureServiceBusEnvelopeMapper.FromServiceBusReceivedMessage(receivedMessage);
+            replyEnvelope = await ApplyInboundPolicyAsync(replyEnvelope, CancellationToken.None).ConfigureAwait(false);
+
             if (!TryGetStatusHeaders(replyEnvelope.Headers, out var status, out var error))
             {
                 var value = _serializer.Deserialize<TReply>(replyEnvelope.Body);
@@ -239,6 +251,43 @@ public sealed class AzureServiceBusRequestClient<TRequest, TReply> : IRequestCli
                 }
             }
         }
+    }
+
+    private Task<MessageEnvelope> ApplyOutboundPolicyAsync(
+        MessageEnvelope envelope,
+        CancellationToken cancellationToken)
+    {
+        if (_largePayloadPolicy is null)
+        {
+            return Task.FromResult(envelope);
+        }
+
+        if (_payloadStore is null)
+        {
+            throw new InvalidOperationException(
+                "ILargePayloadPolicy is configured but no IPayloadStore is registered.");
+        }
+
+        return _largePayloadPolicy.PrepareOutboundAsync(
+            envelope, _payloadStore, expiresAtUtc: null, ct: cancellationToken);
+    }
+
+    private Task<MessageEnvelope> ApplyInboundPolicyAsync(
+        MessageEnvelope envelope,
+        CancellationToken cancellationToken)
+    {
+        if (_largePayloadPolicy is null)
+        {
+            return Task.FromResult(envelope);
+        }
+
+        if (_payloadStore is null)
+        {
+            throw new InvalidOperationException(
+                "ILargePayloadPolicy is configured but no IPayloadStore is registered.");
+        }
+
+        return _largePayloadPolicy.ResolveInboundAsync(envelope, _payloadStore, ct: cancellationToken);
     }
 
     private static bool TryGetStatusHeaders(

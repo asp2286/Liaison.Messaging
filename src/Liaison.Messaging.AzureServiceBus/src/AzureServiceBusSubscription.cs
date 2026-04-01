@@ -17,6 +17,8 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
     private readonly IMessageContextFactory _contextFactory;
     private readonly IMessageHandler<T> _handler;
     private readonly ILogger? _logger;
+    private readonly ILargePayloadPolicy? _largePayloadPolicy;
+    private readonly IPayloadStore? _payloadStore;
     private readonly ServiceBusProcessor _processor;
     private int _isStarted;
     private int _isDisposed;
@@ -30,6 +32,8 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
     /// <param name="entityOptions">Queue or topic subscription settings.</param>
     /// <param name="handler">Message handler invoked for each received message.</param>
     /// <param name="logger">Optional logger for diagnostics. When <see langword="null"/>, broker errors are silently ignored.</param>
+    /// <param name="largePayloadPolicy">Optional large-payload externalization policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large-payload policy is configured.</param>
     /// <exception cref="ArgumentNullException">Thrown when required dependencies are <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Thrown when required entity settings are invalid.</exception>
     public AzureServiceBusSubscription(
@@ -38,12 +42,16 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
         IMessageContextFactory contextFactory,
         AzureServiceBusEntityOptions entityOptions,
         IMessageHandler<T> handler,
-        ILogger<AzureServiceBusSubscription<T>>? logger = null)
+        ILogger<AzureServiceBusSubscription<T>>? logger = null,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
     {
         _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
         _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
         _handler = handler ?? throw new ArgumentNullException(nameof(handler));
         _logger = logger;
+        _largePayloadPolicy = largePayloadPolicy;
+        _payloadStore = payloadStore;
 
         _processor = CreateProcessor(client ?? throw new ArgumentNullException(nameof(client)), entityOptions);
         _processor.ProcessMessageAsync += OnProcessMessageAsync;
@@ -114,6 +122,7 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
         try
         {
             var envelope = AzureServiceBusEnvelopeMapper.FromServiceBusReceivedMessage(args.Message);
+            envelope = await ApplyInboundPolicyAsync(envelope, args.CancellationToken).ConfigureAwait(false);
             var message = _serializer.Deserialize<T>(envelope.Body);
             var context = _contextFactory.Create(envelope);
 
@@ -145,5 +154,23 @@ public sealed class AzureServiceBusSubscription<T> : IMessageSubscription
             args.EntityPath,
             args.FullyQualifiedNamespace);
         return Task.CompletedTask;
+    }
+
+    private Task<MessageEnvelope> ApplyInboundPolicyAsync(
+        MessageEnvelope envelope,
+        CancellationToken cancellationToken)
+    {
+        if (_largePayloadPolicy is null)
+        {
+            return Task.FromResult(envelope);
+        }
+
+        if (_payloadStore is null)
+        {
+            throw new InvalidOperationException(
+                "ILargePayloadPolicy is configured but no IPayloadStore is registered.");
+        }
+
+        return _largePayloadPolicy.ResolveInboundAsync(envelope, _payloadStore, ct: cancellationToken);
     }
 }

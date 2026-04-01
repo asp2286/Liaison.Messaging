@@ -1,6 +1,8 @@
 namespace Liaison.Messaging.AzureServiceBus;
 
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
@@ -18,6 +20,8 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
     private readonly IMessageContextFactory _contextFactory;
     private readonly IRequestHandler<TRequest, TReply> _handler;
     private readonly ILogger? _logger;
+    private readonly ILargePayloadPolicy? _largePayloadPolicy;
+    private readonly IPayloadStore? _payloadStore;
     private readonly ServiceBusProcessor _processor;
     private readonly ServiceBusSender _replySender;
     private readonly IMessageIdGenerator _messageIdGenerator;
@@ -33,6 +37,8 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
     /// <param name="options">Request/reply queue settings.</param>
     /// <param name="handler">Request handler.</param>
     /// <param name="logger">Optional logger for diagnostics. When <see langword="null"/>, broker errors are silently ignored.</param>
+    /// <param name="largePayloadPolicy">Optional large-payload externalization policy.</param>
+    /// <param name="payloadStore">Optional payload store used when a large-payload policy is configured.</param>
     /// <exception cref="ArgumentNullException">Thrown when required dependencies are <see langword="null"/>.</exception>
     public AzureServiceBusRequestProcessor(
         ServiceBusClient client,
@@ -40,7 +46,9 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
         IMessageContextFactory contextFactory,
         AzureServiceBusRequestReplyOptions options,
         IRequestHandler<TRequest, TReply> handler,
-        ILogger<AzureServiceBusRequestProcessor<TRequest, TReply>>? logger = null)
+        ILogger<AzureServiceBusRequestProcessor<TRequest, TReply>>? logger = null,
+        ILargePayloadPolicy? largePayloadPolicy = null,
+        IPayloadStore? payloadStore = null)
     {
         if (options is null)
         {
@@ -52,6 +60,8 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
         _handler = handler ?? throw new ArgumentNullException(nameof(handler));
         _messageIdGenerator = new GuidMessageIdGenerator();
         _logger = logger;
+        _largePayloadPolicy = largePayloadPolicy;
+        _payloadStore = payloadStore;
 
         var busClient = client ?? throw new ArgumentNullException(nameof(client));
         _replySender = busClient.CreateSender(options.ReplyQueueName);
@@ -109,6 +119,8 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
 
         try
         {
+            requestEnvelope = await ApplyInboundPolicyAsync(requestEnvelope, args.CancellationToken)
+                .ConfigureAwait(false);
             var request = _serializer.Deserialize<TRequest>(requestEnvelope.Body);
             var context = _contextFactory.Create(requestEnvelope);
             replyPayload = await _handler.HandleAsync(request, context, args.CancellationToken).ConfigureAwait(false);
@@ -172,9 +184,11 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
         CancellationToken cancellationToken)
     {
         var payload = value is null ? Array.Empty<byte>() : _serializer.Serialize(value);
+        var messageId = _messageIdGenerator.NewId();
+
         var replyMessage = new ServiceBusMessage(BinaryData.FromBytes(payload))
         {
-            MessageId = _messageIdGenerator.NewId(),
+            MessageId = messageId,
             CorrelationId = correlationId,
         };
 
@@ -184,6 +198,53 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
             if (!string.IsNullOrWhiteSpace(error))
             {
                 replyMessage.ApplicationProperties[AzureServiceBusReplyHeaders.Error] = error;
+            }
+        }
+
+        // Apply outbound large-payload policy to the reply if configured.
+        if (_largePayloadPolicy is not null)
+        {
+            if (_payloadStore is null)
+            {
+                throw new InvalidOperationException(
+                    "ILargePayloadPolicy is configured but no IPayloadStore is registered.");
+            }
+
+            var headers = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var prop in replyMessage.ApplicationProperties)
+            {
+                if (prop.Value is string stringValue)
+                {
+                    headers[prop.Key] = stringValue;
+                }
+            }
+
+            var tempEnvelope = new MessageEnvelope(
+                messageId,
+                correlationId,
+                DateTimeOffset.UtcNow,
+                payload,
+                new ReadOnlyDictionary<string, string>(headers));
+
+            var processedEnvelope = await _largePayloadPolicy.PrepareOutboundAsync(
+                    tempEnvelope, _payloadStore, expiresAtUtc: null, ct: cancellationToken)
+                .ConfigureAwait(false);
+
+            // Replace the message body with the policy-processed body.
+            replyMessage.Body = BinaryData.FromBytes(processedEnvelope.Body.ToArray());
+
+            // Copy policy-added headers into ApplicationProperties, preserving
+            // existing status/error headers and not overwriting MessageId/CorrelationId
+            // (those are set on the ServiceBusMessage directly, not in properties).
+            foreach (var header in processedEnvelope.Headers)
+            {
+                replyMessage.ApplicationProperties[header.Key] = header.Value;
+            }
+
+            if (processedEnvelope.Headers.TryGetValue("content-type", out var ct)
+                && !string.IsNullOrWhiteSpace(ct))
+            {
+                replyMessage.ContentType = ct;
             }
         }
 
@@ -203,5 +264,23 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
                 "Failed to abandon request message. CorrelationId={CorrelationId}",
                 correlationId);
         }
+    }
+
+    private Task<MessageEnvelope> ApplyInboundPolicyAsync(
+        MessageEnvelope envelope,
+        CancellationToken cancellationToken)
+    {
+        if (_largePayloadPolicy is null)
+        {
+            return Task.FromResult(envelope);
+        }
+
+        if (_payloadStore is null)
+        {
+            throw new InvalidOperationException(
+                "ILargePayloadPolicy is configured but no IPayloadStore is registered.");
+        }
+
+        return _largePayloadPolicy.ResolveInboundAsync(envelope, _payloadStore, ct: cancellationToken);
     }
 }

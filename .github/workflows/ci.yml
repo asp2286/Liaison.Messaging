@@ -2,6 +2,17 @@ name: CI
 
 on:
   pull_request:
+    paths-ignore:
+      - README.md
+      - LICENSE
+      - NOTICE.md
+      - .devcontainer/**
+      - benchmarks/**
+      - docs/**
+      - templates/**
+      - samples/**
+      - .github/ISSUE_TEMPLATE/**
+      - .github/PULL_REQUEST_TEMPLATE.md
 
 jobs:
   build-and-test:
