@@ -66,7 +66,8 @@ public static class AzureServiceBusServiceCollectionExtensions
             var largePayloadPolicy = sp.GetService<ILargePayloadPolicy>();
             var payloadStore = sp.GetService<IPayloadStore>();
             return new AzureServiceBusPublisher<T>(
-                client, envelopeFactory, entityOptions, largePayloadPolicy, payloadStore);
+                client, envelopeFactory, entityOptions,
+                largePayloadPolicy: largePayloadPolicy, payloadStore: payloadStore);
         });
 
         return services;
@@ -103,7 +104,10 @@ public static class AzureServiceBusServiceCollectionExtensions
             var largePayloadPolicy = sp.GetService<ILargePayloadPolicy>();
             var payloadStore = sp.GetService<IPayloadStore>();
             return new AzureServiceBusPublisher<T>(
-                client, envelopeFactory, entityOptions, router, largePayloadPolicy, payloadStore);
+                client, envelopeFactory, entityOptions,
+                router: router,
+                largePayloadPolicy: largePayloadPolicy,
+                payloadStore: payloadStore);
         });
 
         return services;

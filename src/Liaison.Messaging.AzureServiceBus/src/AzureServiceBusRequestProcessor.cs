@@ -240,6 +240,12 @@ public sealed class AzureServiceBusRequestProcessor<TRequest, TReply> : IAsyncDi
             {
                 replyMessage.ApplicationProperties[header.Key] = header.Value;
             }
+
+            if (processedEnvelope.Headers.TryGetValue("content-type", out var ct)
+                && !string.IsNullOrWhiteSpace(ct))
+            {
+                replyMessage.ContentType = ct;
+            }
         }
 
         await _replySender.SendMessageAsync(replyMessage, cancellationToken).ConfigureAwait(false);

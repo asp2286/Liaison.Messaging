@@ -22,22 +22,20 @@ public sealed class AzureServiceBusPublisher<T> : IMessagePublisher<T>, IAsyncDi
     private readonly ConcurrentDictionary<string, ServiceBusSender> _senderCache = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="AzureServiceBusPublisher{T}"/> type.
+    /// Initializes a new instance of the <see cref="AzureServiceBusPublisher{T}"/> type
+    /// without a router or large-payload policy.
     /// </summary>
     /// <param name="client">Azure Service Bus client.</param>
     /// <param name="envelopeFactory">Envelope factory used to create outbound envelopes.</param>
     /// <param name="entityOptions">Target queue or topic configuration.</param>
-    /// <param name="largePayloadPolicy">Optional large-payload externalization policy.</param>
-    /// <param name="payloadStore">Optional payload store used when a large-payload policy is configured.</param>
     /// <exception cref="ArgumentNullException">Thrown when required dependencies are <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Thrown when the entity name is empty or whitespace.</exception>
     public AzureServiceBusPublisher(
         ServiceBusClient client,
         IMessageEnvelopeFactory envelopeFactory,
-        AzureServiceBusEntityOptions entityOptions,
-        ILargePayloadPolicy? largePayloadPolicy = null,
-        IPayloadStore? payloadStore = null)
-        : this(client, envelopeFactory, entityOptions, router: null, largePayloadPolicy, payloadStore)
+        AzureServiceBusEntityOptions entityOptions)
+        : this(client, envelopeFactory, entityOptions,
+               router: null, largePayloadPolicy: null, payloadStore: null)
     {
     }
 
@@ -56,7 +54,7 @@ public sealed class AzureServiceBusPublisher<T> : IMessagePublisher<T>, IAsyncDi
         ServiceBusClient client,
         IMessageEnvelopeFactory envelopeFactory,
         AzureServiceBusEntityOptions entityOptions,
-        IAzureServiceBusEntityRouter? router,
+        IAzureServiceBusEntityRouter? router = null,
         ILargePayloadPolicy? largePayloadPolicy = null,
         IPayloadStore? payloadStore = null)
     {
@@ -77,9 +75,8 @@ public sealed class AzureServiceBusPublisher<T> : IMessagePublisher<T>, IAsyncDi
     public async Task PublishAsync(T message, CancellationToken cancellationToken = default)
     {
         var envelope = _envelopeFactory.Create(message, headers: null, correlationId: null);
-        envelope = await ApplyOutboundPolicyAsync(envelope, cancellationToken).ConfigureAwait(false);
-
         var resolvedOptions = _router?.ResolveForEnvelope(envelope) ?? _entityOptions;
+        envelope = await ApplyOutboundPolicyAsync(envelope, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(resolvedOptions.EntityName))
         {
             throw new InvalidOperationException("Resolved entity options must provide a non-empty entity name.");
