@@ -6,6 +6,7 @@ using Azure.Messaging.ServiceBus;
 using Liaison.Messaging;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 /// <summary>
 /// Dependency injection extensions for Azure Service Bus messaging components.
@@ -135,7 +136,8 @@ public static class AzureServiceBusServiceCollectionExtensions
             var serializer = sp.GetRequiredService<IMessageSerializer>();
             var contextFactory = sp.GetRequiredService<IMessageContextFactory>();
             var handler = sp.GetRequiredService<THandler>();
-            return new AzureServiceBusSubscription<T>(client, serializer, contextFactory, entityOptions, handler);
+            var logger = sp.GetService<ILogger<AzureServiceBusSubscription<T>>>();
+            return new AzureServiceBusSubscription<T>(client, serializer, contextFactory, entityOptions, handler, logger);
         });
 
         return services;
@@ -170,8 +172,9 @@ public static class AzureServiceBusServiceCollectionExtensions
             var envelopeFactory = sp.GetRequiredService<IMessageEnvelopeFactory>();
             var serializer = sp.GetRequiredService<IMessageSerializer>();
             var timeoutPolicy = sp.GetService<IRequestTimeoutPolicy>();
+            var logger = sp.GetService<ILogger<AzureServiceBusRequestClient<TRequest, TReply>>>();
             return new AzureServiceBusRequestClient<TRequest, TReply>(
-                client, envelopeFactory, serializer, timeoutPolicy, options);
+                client, envelopeFactory, serializer, timeoutPolicy, options, logger);
         });
 
         return services;
@@ -210,8 +213,9 @@ public static class AzureServiceBusServiceCollectionExtensions
             var serializer = sp.GetRequiredService<IMessageSerializer>();
             var contextFactory = sp.GetRequiredService<IMessageContextFactory>();
             var handler = sp.GetRequiredService<THandler>();
+            var logger = sp.GetService<ILogger<AzureServiceBusRequestProcessor<TRequest, TReply>>>();
             return new AzureServiceBusRequestProcessor<TRequest, TReply>(
-                client, serializer, contextFactory, options, handler);
+                client, serializer, contextFactory, options, handler, logger);
         });
 
         return services;
