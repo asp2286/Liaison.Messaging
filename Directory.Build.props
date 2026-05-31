@@ -16,4 +16,8 @@
     <PackageReadmeFile>Package.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false' and Exists('$(MSBuildProjectDirectory)/Package.md')">
+    <None Update="Package.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 </Project>

@@ -12,6 +12,7 @@
     <ProjectReference Include="../../src/Liaison.Messaging.DependencyInjection/Liaison.Messaging.DependencyInjection.csproj" />
     <ProjectReference Include="../../src/Liaison.Messaging.InMemory/Liaison.Messaging.InMemory.csproj" />
     <ProjectReference Include="../../src/Liaison.Messaging.AzureServiceBus/Liaison.Messaging.AzureServiceBus.csproj" />
+    <ProjectReference Include="../../src/Liaison.Messaging.AwsSqs/Liaison.Messaging.AwsSqs.csproj" />
     <ProjectReference Include="../../src/Liaison.Messaging.Hosting/Liaison.Messaging.Hosting.csproj" />
   </ItemGroup>
 

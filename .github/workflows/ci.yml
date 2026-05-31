@@ -13,6 +13,8 @@ on:
       - samples/**
       - .github/ISSUE_TEMPLATE/**
       - .github/PULL_REQUEST_TEMPLATE.md
+      - "*.sln"
+      - "**/*.sln"
 
 jobs:
   build-and-test:

@@ -1,6 +1,7 @@
 namespace Liaison.Messaging.Hosting;
 
 using System;
+using Liaison.Messaging.AwsSqs;
 using Liaison.Messaging.AzureServiceBus;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -60,6 +61,59 @@ public static class LiaisonHostingServiceCollectionExtensions
 
         services.AddHostedService<AzureServiceBusRequestProcessorService<TRequest, TReply>>(
             sp => sp.GetRequiredService<AzureServiceBusRequestProcessorService<TRequest, TReply>>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers an <see cref="SqsSubscriptionService{T}"/> as a hosted service
+    /// so that the .NET Generic Host manages the subscription lifecycle.
+    /// </summary>
+    /// <typeparam name="T">Message payload type.</typeparam>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
+    /// <remarks>
+    /// Requires that <see cref="SqsSubscription{T}"/> is already registered
+    /// (e.g. via <c>AddSqsSubscription</c>).
+    /// </remarks>
+    public static IServiceCollection AddSqsSubscriptionService<T>(
+        this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddSingleton<SqsSubscriptionService<T>>(sp =>
+            new SqsSubscriptionService<T>(
+                sp.GetRequiredService<SqsSubscription<T>>()));
+
+        services.AddHostedService<SqsSubscriptionService<T>>(
+            sp => sp.GetRequiredService<SqsSubscriptionService<T>>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers an <see cref="SqsRequestProcessorService{TRequest, TReply}"/> as a
+    /// hosted service so that the .NET Generic Host manages the request processor lifecycle.
+    /// </summary>
+    /// <typeparam name="TRequest">Request payload type.</typeparam>
+    /// <typeparam name="TReply">Reply payload type.</typeparam>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The same <see cref="IServiceCollection"/> for chaining.</returns>
+    /// <remarks>
+    /// Requires that <see cref="SqsRequestProcessor{TRequest, TReply}"/> is already
+    /// registered (e.g. via <c>AddSqsRequestProcessor</c>).
+    /// </remarks>
+    public static IServiceCollection AddSqsRequestProcessorService<TRequest, TReply>(
+        this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddSingleton<SqsRequestProcessorService<TRequest, TReply>>(sp =>
+            new SqsRequestProcessorService<TRequest, TReply>(
+                sp.GetRequiredService<SqsRequestProcessor<TRequest, TReply>>()));
+
+        services.AddHostedService<SqsRequestProcessorService<TRequest, TReply>>(
+            sp => sp.GetRequiredService<SqsRequestProcessorService<TRequest, TReply>>());
 
         return services;
     }
