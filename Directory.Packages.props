@@ -7,20 +7,20 @@
     <PackageVersion Include="AWSSDK.S3" Version="3.7.413.4" />
     <PackageVersion Include="AWSSDK.SQS" Version="3.7.500" />
     <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
-    <PackageVersion Include="Azure.Storage.Blobs" Version="12.23.0" />
+    <PackageVersion Include="Azure.Storage.Blobs" Version="12.28.0" />
     <PackageVersion Include="Google.Protobuf" Version="3.35.0" />
     <PackageVersion Include="Grpc.Tools" Version="2.81.0" />
-    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="8.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.3" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="8.0.2" />
+    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.8" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
-    <PackageVersion Include="System.Text.Json" Version="8.0.6" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.8" />
     <PackageVersion Include="xunit" Version="2.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
   </ItemGroup>
