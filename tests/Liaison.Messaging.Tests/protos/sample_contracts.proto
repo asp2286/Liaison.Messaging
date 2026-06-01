@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+option csharp_namespace = "Liaison.Messaging.Serialization.Protobuf.Demo";
+package liaison.demo;
+
+message DemoUserRegistered {
+  string user_id = 1;
+  string email = 2;
+  int64 registered_at_unix_ms = 3;
+}
