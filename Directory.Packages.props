@@ -4,8 +4,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="AWSSDK.S3" Version="3.7.413.4" />
-    <PackageVersion Include="AWSSDK.SQS" Version="3.7.500" />
+    <PackageVersion Include="AWSSDK.S3" Version="4.0.23.5" />
+    <PackageVersion Include="AWSSDK.SQS" Version="4.0.2.33" />
     <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.28.0" />
     <PackageVersion Include="Google.Protobuf" Version="3.35.0" />
@@ -19,6 +19,7 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.8" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.300" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
     <PackageVersion Include="System.Text.Json" Version="10.0.8" />
     <PackageVersion Include="xunit" Version="2.9.0" />

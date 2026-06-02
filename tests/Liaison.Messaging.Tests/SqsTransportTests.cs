@@ -660,7 +660,7 @@ public sealed class SqsTransportTests
         public Task<ChangeMessageVisibilityResponse> ChangeMessageVisibilityAsync(
             string queueUrl,
             string receiptHandle,
-            int visibilityTimeout,
+            int? visibilityTimeout,
             CancellationToken cancellationToken = default)
             => throw new NotImplementedException();
 

@@ -100,7 +100,7 @@ public sealed class S3PayloadStoreFixture : PayloadStoreFixture
                 ct)
             .ConfigureAwait(false);
 
-        var tag = tagsResponse.Tagging.FirstOrDefault(pair =>
+        var tag = tagsResponse.Tagging?.FirstOrDefault(pair =>
             string.Equals(pair.Key, ExpiresMetadataKey, StringComparison.OrdinalIgnoreCase));
 
         return tag?.Value;

@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   .NET 8, will now resolve `Microsoft.Extensions.*` 10.x. `netstandard2.0`
   support is retained because the 10.x packages ship a `netstandard2.0` asset.
 - Updated `Azure.Storage.Blobs` to 12.28.x.
+- Updated AWS SDK to v4 (`AWSSDK.S3` 4.x, `AWSSDK.SQS` 4.x). This raises the
+  transitive dependency floor for consumers of `Liaison.Messaging.AwsSqs` and
+  `Liaison.Messaging.AwsStorage`, and carries AWS SDK v4's own breaking changes
+  (for example, response collections may be null by default).
+- Symbols are now shipped as embedded PDBs inside each assembly instead of a
+  separate `.snupkg` symbol package. Source debugging via SourceLink is retained.
 
 ## [0.1.0] - 2026-06-01
 

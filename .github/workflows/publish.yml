@@ -92,9 +92,7 @@ jobs:
               -c Release \
               --no-build \
               -o artifacts \
-              -p:PackageVersion=${{ env.PKG_VERSION }} \
-              -p:IncludeSymbols=true \
-              -p:SymbolPackageFormat=snupkg
+              -p:PackageVersion=${{ env.PKG_VERSION }}
           done
 
       - name: NuGet Login
@@ -105,6 +103,3 @@ jobs:
 
       - name: Publish nupkg to nuget.org (Trusted Publishing)
         run: dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }} --skip-duplicate
-
-      - name: Publish snupkg to nuget.org (Trusted Publishing)
-        run: dotnet nuget push "artifacts/*.snupkg" --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }} --skip-duplicate
